@@ -4,3 +4,4 @@ cache/
 .env
 coverage/
 typechain-types/
+frontend/local-config.json
