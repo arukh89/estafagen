@@ -27,9 +27,14 @@ The directory is the A2A-style Agent Card equivalent: discovery first, delegatio
   attestations, Agent CV, staking, proof-of-work receipts, Agent Card
   verification, private delegation, provenance tree, playbooks, swarm
   fan-out, availability, heartbeat, analytics, guilds, recurring
-  delegations) + full English conversion. The Round 5 contract is not
-  yet redeployed to testnet — the new on-chain features need the new
-  deployment; the UI degrades gracefully against the Round 4 deployment.
+  delegations) + full English conversion.
+- **Round 5.1 (done 22 Nov 2026):** guest-mode RPC fix (the BSC
+  data-seed nodes reject `eth_getLogs` with -32005 "limit exceeded",
+  so guest reads now try `bsc-testnet.publicnode.com` first, then the
+  data-seed nodes as fallbacks) + Round 5 contract redeployed to
+  testnet + demo seed data on-chain (3 demo agents, 4 completed
+  delegations with two-sided attestations, 1 staked, 1 private), so
+  the reputation / CV / analytics features show real data.
   Mainnet deploy + project submission still need a separate explicit
   confirmation each. Nothing has been submitted or posted.
 
@@ -37,13 +42,13 @@ The directory is the A2A-style Agent Card equivalent: discovery first, delegatio
 
 | Contract | Address | Deploy tx |
 |---|---|---|
-| EstafAgen | `0x0d3D7d28c3f553a8328F0B7e0AFd9F9D4E84D667` | `0x05ca4eb471ec106ba2375c8ab39c1c83cdd348c12fd508efb9184fbd99dc9ab5` |
-| MockAgentIdRegistry (TEST ONLY) | `0x98b7f94587473f7290dAff8c1781f6C7aA3C2Ef0` | `0x7e6ba897a1198bc58c6566fb10fd0d9b23fb1e32d7d10dd893b8a669ff80c6d5` |
+| EstafAgen | `0x2c52BdB79059760120bF4E6FB6e97509D58Fd1a6` | `0x2aebecb1a423622f7eff90b1974ea49523324a9d7eb7e2bc3368699710741fd7` |
+| MockAgentIdRegistry (TEST ONLY) | `0x55c015f3006EFc338186F5590D13177870b12E04` | `0x4ebc42fea97659c27403f1fcaad08c16ee0a60a8396002e64a0463d443c6b623` |
 
-- Deployer: `0x0c4466A4B65cfB7A87f782a8335a0AC1B6661354` (remaining balance 0.0997211466 tBNB).
+- Deployer: `0x0c4466A4B65cfB7A87f782a8335a0AC1B6661354` (remaining balance 0.0851888035 tBNB, after deploy + seed).
 - **Sourcify: both `exact_match`** (creation + runtime) — see
-  [EstafAgen on Sourcify](https://sourcify.dev/server/v2/contract/97/0x0d3D7d28c3f553a8328F0B7e0AFd9F9D4E84D667)
-  and [Mock on Sourcify](https://sourcify.dev/server/v2/contract/97/0x98b7f94587473f7290dAff8c1781f6C7aA3C2Ef0).
+  [EstafAgen on Sourcify](https://sourcify.dev/server/v2/contract/97/0x2c52BdB79059760120bF4E6FB6e97509D58Fd1a6)
+  and [Mock on Sourcify](https://sourcify.dev/server/v2/contract/97/0x55c015f3006EFc338186F5590D13177870b12E04).
 - Native BscScan verification still needs a free Etherscan API key (see below).
 - Frontend live at https://estafagen.vercel.app/ (Vercel, manual deploy from the `frontend/` folder; GitHub auto-deploy not connected yet — Vercel asks for a GitHub Login Connection).
   Run locally: `cd frontend && python3 -m http.server 8000`, open
@@ -118,7 +123,7 @@ manually via API v2 (keyless), as in Round 4:
 #    with that standard JSON as the verification body (see the
 #    Sourcify v2 API docs for the current body format).
 # 3. Check the result:
-curl "https://sourcify.dev/server/v2/contract/97/0x0d3D7d28c3f553a8328F0B7e0AFd9F9D4E84D667"
+curl "https://sourcify.dev/server/v2/contract/97/0x2c52BdB79059760120bF4E6FB6e97509D58Fd1a6"
 #    -> "match": "exact_match" (creation + runtime).
 ```
 

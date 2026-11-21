@@ -417,6 +417,13 @@
         }
 
         // 4. Network / provider problems.
+        // The node itself rejected the read (rate limit): the network is
+        // reachable, the query was refused — different from unreachable.
+        // BSC testnet data-seed nodes answer -32005 "limit exceeded" for
+        // eth_getLogs; publicnode answers "…triggered rate limit".
+        if (/limit exceeded|rate limit|too many requests/i.test(text)) {
+            return 'The network node rejected this read (rate limit). Try again in a moment.';
+        }
         if (
             (err && (err.code === 'NETWORK_ERROR' || err.code === 'TIMEOUT' || err.code === 'SERVER_ERROR')) ||
             /could not detect network|network error|timeout|timed out|failed to fetch|ECONNREFUSED|getaddrinfo/i.test(text)

@@ -159,3 +159,26 @@ node scripts/integration-test.js
   localStorage templates re-run manually (no server, no scheduling).
   Reputation is points only, floored at 0, no cap; levels 0–9
   Newcomer, 10–29 Rising, 30–99 Trusted, 100+ Elite.
+
+## Round 5.1 (testnet redeploy + guest RPC fix + seed data) — done 22 Nov 2026
+
+- `config.js`: chain 97 now points at the Round 5 redeployment —
+  EstafAgen `0x2c52BdB79059760120bF4E6FB6e97509D58Fd1a6`, mock registry
+  `0x55c015f3006EFc338186F5590D13177870b12E04`, `deployedFromBlock`
+  144110035 (mock deploy block; EstafAgen at 144110039). Both contracts
+  Sourcify `exact_match`.
+- Guest reads (`app.js`): the BSC data-seed nodes reject `eth_getLogs`
+  with -32005 "limit exceeded" even for a 100-block range, which broke
+  the directory/analytics/tasks in guest mode. Chain 97 now tries
+  `https://bsc-testnet.publicnode.com` first, then the two data-seed
+  nodes as fallbacks (`SequentialRpcProvider`: sequential try-next-on-
+  error; deliberately not `ethers.FallbackProvider` — its quorum
+  semantics fail against two dead nodes). `explainError` now tells a
+  rate-limited read apart from an unreachable network.
+- Seed data (`scripts/seed-demo.js`, testnet only): 3 demo agents
+  (labeled "(seed)"), 4 root tasks + 4 subtasks, all completed and
+  attested both sides, 1 staked acceptance (5 pts), 1 private
+  delegation. Reputation on-chain: Scout 18 (Rising), Writer 18
+  (Rising), Analyst 33 (Trusted). Two extra demo profiles exist from
+  an earlier interrupted seed run (one orphaned key, one probe wallet
+  with an open root task) — all clearly demo-labeled, harmless.

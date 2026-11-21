@@ -16,13 +16,24 @@
     var CONFIG = window.ESTAFAGEN_CONFIG;
     var EA = window.EstafAgen;
 
-    // Public read-only RPCs for guest mode (no wallet needed to read).
-    // Hostname matches hardhat.config.js (bnbchain.org) — one source of
-    // truth for the testnet RPC (F17).
+    // Public read-only RPCs for guest mode (no wallet needed to read),
+    // in try order: makeReadProvider tries each URL in turn and fails
+    // over to the next one when a read errors (SequentialRpcProvider).
+    // Chain 97's primary is publicnode, NOT a bnbchain.org data-seed:
+    // the data-seed nodes answer eth_blockNumber/eth_call but reject
+    // eth_getLogs with -32005 "limit exceeded" even for a 100-block
+    // range, which broke the directory/analytics/tasks in guest mode
+    // (verified live 22 Nov 2026). They stay as fallbacks only.
+    // Chain 56 keeps its single URL (unchanged). hardhat.config.js
+    // still uses bnbchain.org for deploys; only guest reads moved.
     var PUBLIC_RPC = {
-        97: 'https://data-seed-prebsc-1-s1.bnbchain.org:8545',
-        56: 'https://bsc-dataseed.binance.org/',
-        31337: 'http://127.0.0.1:8545/',
+        97: [
+            'https://bsc-testnet.publicnode.com',
+            'https://data-seed-prebsc-2-s1.bnbchain.org:8545',
+            'https://data-seed-prebsc-1-s1.bnbchain.org:8545',
+        ],
+        56: ['https://bsc-dataseed.binance.org/'],
+        31337: ['http://127.0.0.1:8545/'],
     };
 
     var DEFAULT_CHAIN = 97; // BSC Testnet (until Round 4 fills in addresses)
@@ -215,10 +226,48 @@
     // wallet installed, and the dropdown choice is never overwritten by
     // the wallet's chain (the old code returned a BrowserProvider here
     // whenever window.ethereum existed).
+    // Sequential failover read provider: tries its URLs in order and
+    // moves to the next one when a request fails. Reads only — writes
+    // go through the wallet signer, never through this provider.
+    //
+    // Deliberately NOT ethers.FallbackProvider: its default quorum is
+    // ceil(weight/2), so one healthy node can never satisfy quorum
+    // against two failing ones, and with quorum 1 the first fast error
+    // wins the race instead of failing over (both verified live against
+    // the chain-97 nodes, 22 Nov 2026). Sequential try-next-on-error is
+    // the semantics guest mode needs.
+    //
+    // `class` (not this file's usual ES5 function style) because
+    // ethers.AbstractProvider keeps its state in #private fields, which
+    // ES5 prototype chaining cannot inherit reliably.
+    class SequentialRpcProvider extends ethers.AbstractProvider {
+        constructor(urls) {
+            super();
+            this._rpcProviders = urls.map(function (u) { return new ethers.JsonRpcProvider(u); });
+        }
+        async _detectNetwork() {
+            var lastErr = null;
+            for (var i = 0; i < this._rpcProviders.length; i++) {
+                try { return await this._rpcProviders[i].getNetwork(); }
+                catch (e) { lastErr = e; }
+            }
+            throw lastErr;
+        }
+        async _perform(req) {
+            var lastErr = null;
+            for (var j = 0; j < this._rpcProviders.length; j++) {
+                try { return await this._rpcProviders[j]._perform(req); }
+                catch (e) { lastErr = e; }
+            }
+            throw lastErr;
+        }
+    }
+
     function makeReadProvider(chainId) {
-        var url = PUBLIC_RPC[chainId];
-        if (!url) return null;
-        return new ethers.JsonRpcProvider(url);
+        var urls = PUBLIC_RPC[chainId];
+        if (!urls || urls.length === 0) return null;
+        if (urls.length === 1) return new ethers.JsonRpcProvider(urls[0]);
+        return new SequentialRpcProvider(urls);
     }
 
     function buildClient() {
@@ -1441,7 +1490,8 @@
             chainId: '0x' + Number(chainId).toString(16),
             chainName: cfg ? cfg.label : ('Chain ' + chainId),
             nativeCurrency: NATIVE_CURRENCY[chainId] || { name: 'Ether', symbol: 'ETH', decimals: 18 },
-            rpcUrls: [PUBLIC_RPC[chainId]],
+            // All known RPCs, in try order — wallets try them in turn.
+            rpcUrls: (PUBLIC_RPC[chainId] || []).slice(),
         };
         if (cfg && cfg.explorer) params.blockExplorerUrls = [cfg.explorer];
         return await window.ethereum.request({

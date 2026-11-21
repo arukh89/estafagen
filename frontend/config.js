@@ -6,7 +6,7 @@
  * by `scripts/deploy-local.js` after a local deploy and only carries the
  * local (chain 31337) addresses.
  *
- * Round 4 (22 Nov 2026) deployed to BSC Testnet (97) and verified both
+ * Round 5 (22 Nov 2026) redeployed to BSC Testnet (97) and verified both
  * contracts exact_match on Sourcify; mainnet (56) only in Round 5, which
  * needs a separate explicit confirmation.
  *
@@ -33,23 +33,23 @@ window.ESTAFAGEN_CONFIG = {
             explorer: null,
             deployedFromBlock: 0, // local chain starts at genesis; tiny range
         },
-        // BSC Testnet — deployed Round 4 (22 Nov 2026) and verified exact_match
+        // BSC Testnet — redeployed Round 5 (22 Nov 2026) and verified exact_match
         // on Sourcify (both contracts, creation + runtime). Sourcify also
-        // forwarded both to BscScan (Etherscan V2); the BscScan-side result
-        // could not be confirmed from this VM (no API key, BscScan web 403)
+        // forwards verified contracts to BscScan (Etherscan V2); the BscScan-side
+        // result could not be confirmed from this VM (no API key, BscScan web 403)
         // — see the Round 4 report for the key needed to finish it.
-        // Mock registry 0x98b7f94587473f7290dAff8c1781f6C7aA3C2Ef0,
-        // EstafAgen 0x0d3D7d28c3f553a8328F0B7e0AFd9F9D4E84D667.
+        // Mock registry 0x55c015f3006EFc338186F5590D13177870b12E04,
+        // EstafAgen 0x2c52BdB79059760120bF4E6FB6e97509D58Fd1a6.
         97: {
             label: 'BSC Testnet',
-            estafagen: '0x0d3D7d28c3f553a8328F0B7e0AFd9F9D4E84D667',
-            registry: '0x98b7f94587473f7290dAff8c1781f6C7aA3C2Ef0', // mock registry, Round 4
+            estafagen: '0x2c52BdB79059760120bF4E6FB6e97509D58Fd1a6',
+            registry: '0x55c015f3006EFc338186F5590D13177870b12E04', // mock registry, Round 5
             explorerTx: 'https://testnet.bscscan.com/tx/',
             explorerAddress: 'https://testnet.bscscan.com/address/',
             explorer: 'https://testnet.bscscan.com',
-            // Block 144092369 = MockAgentIdRegistry deployment (EstafAgen
-            // followed at 144092375); the directory scan starts here.
-            deployedFromBlock: 144092369,
+            // Block 144110035 = MockAgentIdRegistry deployment (EstafAgen
+            // followed at 144110039); the directory scan starts here.
+            deployedFromBlock: 144110035,
         },
         // BNB Chain mainnet — filled in Round 5 (needs explicit confirmation).
         56: {
