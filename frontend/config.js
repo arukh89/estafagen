@@ -19,14 +19,14 @@ window.ESTAFAGEN_CONFIG = {
     // There is NO official registry on BSC Testnet — the mock stands in.
     officialRegistry: '0x60b9262456de011f7d15a54cdd8c48baaa8b022f',
 
-    // Official tBNB faucet (used in the "saldo tidak cukup" error message).
+    // Official tBNB faucet (used in the "insufficient balance" error message).
     faucetUrl: 'https://testnet.bnbchain.org/faucet-smart',
 
     chains: {
         // Local Hardhat network (npx hardhat node). Addresses come from
         // local-config.json, written by scripts/deploy-local.js.
         31337: {
-            label: 'Hardhat lokal',
+            label: 'Local Hardhat',
             estafagen: null,
             registry: null,
             explorerTx: null, // no explorer for a local node; show the hash

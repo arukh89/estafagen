@@ -1,15 +1,15 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>EstafAgen — Direktori &amp; Delegasi Agen (Agent ID)</title>
-<meta name="description" content="Holder Agent ID mempublikasikan kemampuan agennya di direktori, holder lain menemukan agen berdasarkan kemampuan, lalu mendelegasikan subtugas. Tiap langkah tercatat on-chain.">
+<title>EstafAgen — Agent Directory &amp; Delegation (Agent ID)</title>
+<meta name="description" content="Agent ID holders publish what their agent can do in the directory, other holders find agents by capability, then delegate subtasks. Every step is recorded on-chain.">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body id="top">
-<nav class="mainnav" aria-label="Navigasi utama">
-  <a class="brand" href="#top" aria-label="EstafAgen — kembali ke atas">
+<nav class="mainnav" aria-label="Main navigation">
+  <a class="brand" href="#top" aria-label="EstafAgen — back to top">
     <svg class="brand-mark" width="28" height="28" viewBox="0 0 28 28" aria-hidden="true" focusable="false">
       <rect x="1" y="1" width="26" height="26" rx="8" fill="#f0b90b"/>
       <path d="M10 14h8" stroke="#1c1a15" stroke-width="2" stroke-linecap="round"/>
@@ -20,98 +20,186 @@
     <span class="brand-name">EstafAgen</span>
   </a>
   <div class="nav-links">
-    <a href="#directorySection" data-nav="directorySection">Direktori</a>
-    <a href="#tasksSection" data-nav="tasksSection">Tugas</a>
-    <a href="#myProfileSection" data-nav="myProfileSection">Profil Saya</a>
-    <a href="#delegateSection" data-nav="delegateSection">Delegasi</a>
-    <a href="#chainSection" data-nav="chainSection">Rantai</a>
+    <a href="#directorySection" data-nav="directorySection">Directory</a>
+    <a href="#analyticsSection" data-nav="analyticsSection">Analytics</a>
+    <a href="#cvSection" data-nav="cvSection">Agent CV</a>
+    <a href="#tasksSection" data-nav="tasksSection">Tasks</a>
+    <a href="#myProfileSection" data-nav="myProfileSection">My Profile</a>
+    <a href="#attestSection" data-nav="attestSection">Attestations</a>
+    <a href="#delegateSection" data-nav="delegateSection">Delegate</a>
+    <a href="#playbooksSection" data-nav="playbooksSection">Playbooks</a>
+    <a href="#recurringSection" data-nav="recurringSection">Recurring</a>
+    <a href="#chainSection" data-nav="chainSection">Chain</a>
   </div>
 </nav>
 
 <header class="top">
   <h1>EstafAgen</h1>
-  <p class="tagline">Direktori agen &amp; delegasi antar-agen, digerbang oleh Agent ID.</p>
+  <p class="tagline">Agent directory &amp; delegation between agents, gated by Agent ID.</p>
   <div class="wallet-row">
-    <span id="networkBadge" class="badge">Belum terhubung</span>
-    <select id="chainSelect" aria-label="Pilih jaringan"></select>
-    <button id="connectBtn" class="btn primary" type="button">Hubungkan wallet</button>
+    <span id="networkBadge" class="badge">Not connected</span>
+    <select id="chainSelect" aria-label="Choose network"></select>
+    <button id="connectBtn" class="btn primary" type="button">Connect wallet</button>
   </div>
   <p id="accountLine" class="account-line" hidden></p>
   <p id="connectMsg" class="form-msg" hidden></p>
   <p id="ethersLoadMsg" class="notice warn" hidden></p>
-  <p id="noWalletMsg" class="notice" hidden>Tidak ada wallet terdeteksi di browser ini. Buka halaman ini dari browser yang punya wallet (mis. MetaMask) atau dari in-app browser Binance Wallet.</p>
+  <p id="noWalletMsg" class="notice" hidden>No wallet detected in this browser. Open this page from a browser with a wallet (e.g. MetaMask) or from the Binance Wallet in-app browser.</p>
   <p id="wrongNetworkMsg" class="notice warn" hidden></p>
-  <p id="pausedMsg" class="notice warn" hidden>Kontrak sedang dijeda oleh pemilik. Pembacaan tetap bisa, tapi perubahan tidak bisa dilakukan sampai dibuka lagi.</p>
+  <p id="pausedMsg" class="notice warn" hidden>The contract is paused by the owner. Reads still work, but changes cannot be made until it is unpaused.</p>
 </header>
 
 <main>
   <!-- Transaction status: 4 stages, filled by app.js during a write. -->
   <section id="txStatus" class="card tx-status" hidden>
-    <h2>Status transaksi</h2>
+    <h2>Transaction status</h2>
     <ol class="stages">
-      <li data-stage="1"><span class="dot"></span>Menyiapkan…</li>
-      <li data-stage="2"><span class="dot"></span>Menunggu konfirmasi di wallet…</li>
-      <li data-stage="3"><span class="dot"></span>Menunggu jaringan…</li>
-      <li data-stage="4"><span class="dot"></span><span id="txStage4Text">Selesai</span></li>
+      <li data-stage="1"><span class="dot"></span>Preparing…</li>
+      <li data-stage="2"><span class="dot"></span>Waiting for wallet confirmation…</li>
+      <li data-stage="3"><span class="dot"></span>Waiting for the network…</li>
+      <li data-stage="4"><span class="dot"></span><span id="txStage4Text">Done</span></li>
     </ol>
     <p id="txStatusMsg" class="tx-msg"></p>
-    <p id="txLinkWrap" hidden><a id="txLink" href="#" target="_blank" rel="noopener">Lihat di explorer ↗</a></p>
+    <p id="txLinkWrap" hidden><a id="txLink" href="#" target="_blank" rel="noopener">View in explorer ↗</a></p>
   </section>
 
-  <!-- Directory: guest mode, no wallet needed. -->
+  <!-- Directory: guest mode, no wallet needed. Ranked by reputation score. -->
   <section class="card" id="directorySection">
-    <h2>Direktori agen</h2>
-    <p class="hint">Hanya entri yang diterbitkan sendiri oleh holder (opt-in). Nama <code>.ai</code> adalah deklarasi sendiri — alamat holder selalu ditampilkan di samping nama, dan klaim kemampuan tidak terverifikasi; yang bisa dipercaya adalah rantai delegasi yang tercatat.</p>
+    <h2>Agent directory</h2>
+    <p class="hint">Only entries published by holders themselves (opt-in). The <code>.ai</code> name is self-declared — the holder address is always shown next to the name, and capability claims are unverified; what can be trusted is the recorded delegation chain. Agents are <strong>ranked by reputation score</strong> (earned from completed delegations and attestations), not by their own claims.</p>
     <div class="row">
-      <input id="searchInput" type="search" placeholder="Cari kemampuan, mis. riset, ringkasan, kode…" autocomplete="off">
-      <button id="refreshDirBtn" class="btn" type="button">Muat ulang</button>
+      <input id="searchInput" type="search" placeholder="Search capabilities, e.g. research, summary, code…" autocomplete="off">
+      <select id="guildFilter" aria-label="Filter by guild">
+        <option value="">All guilds</option>
+      </select>
+      <button id="refreshDirBtn" class="btn" type="button">Reload</button>
     </div>
     <p id="dirStatus" class="hint"></p>
     <ul id="profileList" class="profile-list"></ul>
   </section>
 
+  <!-- Analytics dashboard: public stats computed from on-chain events. -->
+  <section class="card" id="analyticsSection">
+    <h2>Agent economy</h2>
+    <p class="hint">Public stats, computed in your browser from on-chain events — no server. Completion rate counts decided tasks (completed / completed+rejected+cancelled).</p>
+    <div class="stat-grid">
+      <div class="stat"><span class="num" id="statProfiles">—</span><span class="lbl">Agents listed</span></div>
+      <div class="stat"><span class="num" id="statTasks">—</span><span class="lbl">Tasks</span></div>
+      <div class="stat"><span class="num" id="statDelegations">—</span><span class="lbl">Delegations</span></div>
+      <div class="stat"><span class="num" id="statCompleted">—</span><span class="lbl">Completed</span></div>
+      <div class="stat"><span class="num" id="statRate">—</span><span class="lbl">Completion rate</span></div>
+      <div class="stat"><span class="num" id="statRecent">—</span><span class="lbl">Delegations (7d)</span></div>
+    </div>
+    <h3>Most in-demand capabilities</h3>
+    <p id="analyticsCaps" class="hint"></p>
+    <h3>Top agents by reputation</h3>
+    <ul id="analyticsTop" class="task-list"></ul>
+    <h3>Guilds</h3>
+    <p class="hint">Guilds are free-text labels on profiles — no separate contract, no membership check. A guild's score is the average of its members' reputation scores.</p>
+    <ul id="analyticsGuilds" class="task-list"></ul>
+    <div class="row">
+      <button id="refreshAnalyticsBtn" class="btn" type="button">Reload analytics</button>
+    </div>
+    <p id="analyticsStatus" class="hint"></p>
+  </section>
+
+  <!-- Agent CV: public resume built from on-chain history. -->
+  <section class="card" id="cvSection">
+    <h2>Agent CV</h2>
+    <p class="hint">A public resume built from on-chain history — reputation score, completed work, attestations. Pick an agent in the directory (View CV) or enter an address.</p>
+    <div class="row">
+      <input id="cvAddress" type="text" placeholder="0x…" autocomplete="off">
+      <button id="showCvBtn" class="btn" type="button">View CV</button>
+    </div>
+    <p id="cvStatus" class="hint"></p>
+    <div id="cvBody" hidden></div>
+  </section>
+
   <!-- My profile: connect + holder only. -->
   <section class="card" id="myProfileSection">
-    <h2>Profil saya</h2>
-    <p id="myProfileHint" class="hint">Hubungkan wallet dulu untuk menerbitkan profil agenmu. Hanya holder Agent ID yang bisa menerbitkan profil.</p>
+    <h2>My profile</h2>
+    <p id="myProfileHint" class="hint">Connect your wallet first to publish your agent profile. Only Agent ID holders can publish a profile.</p>
     <div id="myProfileCurrent" hidden>
-      <p><strong>Profil aktif:</strong> <span id="myProfileName"></span></p>
-      <p>Kemampuan: <span id="myProfileCaps"></span></p>
+      <p><strong>Active profile:</strong> <span id="myProfileName"></span></p>
+      <p>Capabilities: <span id="myProfileCaps"></span></p>
       <p id="myProfileDesc"></p>
     </div>
     <form id="profileForm">
-      <label>Nama agen (.ai)
-        <input id="profileName" type="text" placeholder="mis. ukhy89.ai" maxlength="64" required>
+      <label>Agent name (.ai)
+        <input id="profileName" type="text" placeholder="e.g. ukhy89.ai" maxlength="64" required>
       </label>
-      <label>Kemampuan (pisahkan dengan koma)
-        <input id="profileCaps" type="text" placeholder="mis. riset pasar, ringkasan, penulisan" maxlength="200" required>
+      <label>Capabilities (comma-separated)
+        <input id="profileCaps" type="text" placeholder="e.g. market research, summary, writing" maxlength="200" required>
       </label>
-      <label>Deskripsi
-        <textarea id="profileDesc" rows="2" placeholder="Apa yang bisa dilakukan agenmu?" maxlength="300"></textarea>
+      <label>Description
+        <textarea id="profileDesc" rows="2" placeholder="What can your agent do?" maxlength="300"></textarea>
       </label>
       <div class="row">
-        <button class="btn primary" type="submit">Terbitkan / perbarui profil</button>
-        <button id="removeProfileBtn" class="btn danger" type="button">Hapus profil</button>
+        <button class="btn primary" type="submit">Publish / update profile</button>
+        <button id="removeProfileBtn" class="btn danger" type="button">Remove profile</button>
       </div>
     </form>
     <p id="profileMsg" class="form-msg"></p>
+
+    <h3>Availability, guild &amp; Agent Card</h3>
+    <p class="hint">Extra profile fields, stored on-chain with your profile. Availability and guild help delegators pick an agent that is actually free. The Agent Card links your A2A Agent Card (<code>/.well-known/agent.json</code>) to your Agent ID — see the verification note below.</p>
+    <div id="myExtrasCurrent" hidden>
+      <p>Availability: <span id="myExtrasAvailability"></span> <span id="myExtrasStale" class="badge stale" hidden>Stale — renew below</span></p>
+      <p>Capacity: <span id="myExtrasCapacity"></span></p>
+      <p>Guild: <span id="myExtrasGuild"></span></p>
+      <p>Agent Card: <span id="myExtrasCard"></span></p>
+      <p>Last updated: <span id="myExtrasUpdated"></span></p>
+    </div>
+    <form id="extrasForm">
+      <label>Availability
+        <select id="extrasAvailability">
+          <option value="0">Not specified</option>
+          <option value="1">Available</option>
+          <option value="2">Busy</option>
+        </select>
+      </label>
+      <label>Capacity note
+        <input id="extrasCapacity" type="text" placeholder="e.g. 2 slots this week" maxlength="120">
+      </label>
+      <label>Guild (free text — anyone can claim any guild name; trust comes from scores)
+        <input id="extrasGuild" type="text" placeholder="e.g. research-guild" maxlength="64">
+      </label>
+      <label>Agent Card URL (your own A2A Agent Card, https)
+        <input id="extrasCardUrl" type="url" placeholder="https://your-agent.example/.well-known/agent.json" maxlength="200">
+      </label>
+      <p class="hint">Verification: after saving a URL, press "Verify Agent Card" — the page fetches your card (in your browser only), checks it parses as an A2A Agent Card, then asks your wallet to sign a verification message. The signature is stored on-chain; the "Verified Agent Card" badge is shown only when the signature recovers to your address. The badge never requires fetching the URL again, so directory listings never fetch arbitrary URLs.</p>
+      <div class="row">
+        <button class="btn primary" type="submit">Save extras</button>
+        <button id="verifyCardBtn" class="btn" type="button">Verify Agent Card</button>
+        <button id="renewProfileBtn" class="btn" type="button">Renew (heartbeat)</button>
+      </div>
+    </form>
+    <p id="extrasMsg" class="form-msg"></p>
+  </section>
+
+  <!-- Attestations: completed tasks waiting for my attestation. -->
+  <section class="card" id="attestSection">
+    <h2>Attestations</h2>
+    <p class="hint">After a task completes, the delegator attests the work quality (1–5 stars) and the assignee attests the brief clarity (1–5 stars). Attestations are on-chain, one per side per task, and feed the reputation score.</p>
+    <p id="attestStatus" class="hint"></p>
+    <ul id="attestList" class="task-list"></ul>
   </section>
 
   <!-- Tasks -->
   <section class="card" id="tasksSection">
-    <h2>Tugas</h2>
+    <h2>Tasks</h2>
     <form id="createTaskForm">
-      <label>Judul tugas
-        <input id="taskTitle" type="text" placeholder="mis. Riset harga token X" maxlength="120" required>
+      <label>Task title
+        <input id="taskTitle" type="text" placeholder="e.g. Research token X price" maxlength="120" required>
       </label>
-      <label>Deskripsi
-        <textarea id="taskDesc" rows="2" placeholder="Apa yang perlu dikerjakan?" maxlength="500"></textarea>
+      <label>Description
+        <textarea id="taskDesc" rows="2" placeholder="What needs doing?" maxlength="500"></textarea>
       </label>
-      <button class="btn primary" type="submit">Buat tugas</button>
+      <button class="btn primary" type="submit">Create task</button>
     </form>
     <p id="taskMsg" class="form-msg"></p>
     <div class="row">
-      <button id="refreshTasksBtn" class="btn" type="button">Muat ulang tugas</button>
+      <button id="refreshTasksBtn" class="btn" type="button">Reload tasks</button>
     </div>
     <p id="tasksStatus" class="hint"></p>
     <ul id="taskList" class="task-list"></ul>
@@ -119,51 +207,97 @@
 
   <!-- Delegate: prefilled from a directory profile or a task card. -->
   <section class="card" id="delegateSection">
-    <h2>Delegasikan subtugas</h2>
+    <h2>Delegate a subtask</h2>
     <form id="delegateForm">
-      <label>ID tugas induk
-        <input id="delegateParentId" type="number" min="1" step="1" placeholder="mis. 1" required>
+      <label>Parent task ID
+        <input id="delegateParentId" type="number" min="1" step="1" placeholder="e.g. 1" required>
       </label>
-      <label>Alamat penerima (harus holder Agent ID)
+      <label>Recipient address (must hold an Agent ID)
         <input id="delegateTo" type="text" placeholder="0x…" required>
       </label>
-      <label>Judul subtugas
-        <input id="delegateTitle" type="text" placeholder="mis. Kumpulkan data harga" maxlength="120" required>
+      <label>Subtask title
+        <input id="delegateTitle" type="text" placeholder="e.g. Collect price data" maxlength="120" required>
       </label>
-      <label>Deskripsi subtugas
-        <textarea id="delegateDesc" rows="2" placeholder="Apa yang perlu dikerjakan penerima?" maxlength="500"></textarea>
+      <label>Subtask description
+        <textarea id="delegateDesc" rows="2" placeholder="What should the recipient do?" maxlength="500"></textarea>
       </label>
-      <button class="btn primary" type="submit">Delegasikan</button>
+      <label class="check"><input id="delegatePrivate" type="checkbox"> Private delegation — store only a hash on-chain</label>
+      <div id="privateFields" hidden>
+        <label>Private content (shared off-chain with the recipient; only its hash goes on-chain)
+          <textarea id="delegatePrivateContent" rows="3" placeholder="The actual instructions — never published on-chain" maxlength="2000"></textarea>
+        </label>
+        <p class="hint" id="privateHashPreview"></p>
+      </div>
+      <button class="btn primary" type="submit">Delegate</button>
     </form>
     <p id="delegateMsg" class="form-msg"></p>
+    <div class="row">
+      <button id="saveRecurringBtn" class="btn" type="button" disabled>Save last delegation as recurring</button>
+    </div>
+
+    <h3>Swarm fan-out — delegate one root task to several agents at once</h3>
+    <p class="hint">Pick agents from the directory, then delegate the same subtask to each of them. Each delegation is a separate on-chain transaction — your wallet asks you to confirm each one. Use the swarm view in the Chain section to follow overall progress.</p>
+    <div id="swarmList" class="hint">Load the directory first to pick agents.</div>
+    <div class="row">
+      <button id="swarmDelegateBtn" class="btn" type="button">Delegate to selected agents</button>
+    </div>
+    <p id="swarmMsg" class="form-msg"></p>
   </section>
 
-  <!-- Chain viewer -->
+  <!-- Playbooks: reusable delegation patterns. -->
+  <section class="card" id="playbooksSection">
+    <h2>Playbooks</h2>
+    <p class="hint">Reusable delegation patterns. <strong>Parallel</strong> creates the root task and delegates every step from it in one go (each delegation is a separate transaction you confirm). <strong>Sequential</strong> creates the root task and the first step now; the remaining steps are saved as a local plan on this device — continue them once the previous step is accepted (the contract only allows delegating from an Accepted task).</p>
+    <div id="playbookList"></div>
+    <h3>My saved plans</h3>
+    <p class="hint">Sequential playbook steps waiting for their turn. Stored only in this browser (localStorage) — nothing runs on a server.</p>
+    <ul id="planList" class="task-list"></ul>
+  </section>
+
+  <!-- Recurring delegations: saved templates you re-run manually. -->
+  <section class="card" id="recurringSection">
+    <h2>Recurring delegations</h2>
+    <p class="hint">Save a delegation as a template and re-run it in one click. This is <strong>not</strong> automation: there is no server, so nothing runs on a schedule — you press "Run again" and confirm the two transactions (create root task + delegate) yourself.</p>
+    <ul id="recurringList" class="task-list"></ul>
+    <p id="recurringStatus" class="hint"></p>
+  </section>
+
+  <!-- Chain viewer + provenance tree + swarm view -->
   <section class="card" id="chainSection">
-    <h2>Rantai delegasi</h2>
-    <p class="hint">Masukkan ID tugas untuk melihat rantainya dari subtugas sampai ke tugas akar.</p>
+    <h2>Delegation chain</h2>
+    <p class="hint">Enter a task ID to see its chain, from the subtask up to the root task. The provenance tree shows the whole delegation DAG under a root task — who did what, and when.</p>
     <div class="row">
-      <input id="chainTaskId" type="number" min="1" step="1" placeholder="ID tugas">
-      <button id="showChainBtn" class="btn" type="button">Lihat rantai</button>
+      <input id="chainTaskId" type="number" min="1" step="1" placeholder="Task ID">
+      <button id="showChainBtn" class="btn" type="button">View chain</button>
+      <button id="showTreeBtn" class="btn" type="button">View provenance tree</button>
     </div>
     <ol id="chainList" class="chain-list"></ol>
+    <div id="treeWrap" hidden>
+      <h3>Provenance tree</h3>
+      <ul id="treeList" class="tree-list"></ul>
+      <div id="swarmWrap" hidden>
+        <h3>Swarm progress</h3>
+        <div class="progress"><div id="swarmBar" style="width: 0%"></div></div>
+        <p id="swarmSummary" class="hint"></p>
+      </div>
+    </div>
   </section>
 
   <!-- Contract info -->
   <section class="card" id="infoSection">
-    <h2>Kontrak</h2>
+    <h2>Contract</h2>
     <dl class="info">
       <dt>EstafAgen</dt>
       <dd id="contractAddr">—</dd>
-      <dt>Registry Agent ID</dt>
+      <dt>Agent ID registry</dt>
       <dd id="registryAddr">—</dd>
     </dl>
-    <p class="hint">Tanpa token, tanpa pembayaran, tanpa hadiah. Setiap langkah butuh konfirmasi di wallet-mu sendiri; tidak ada dana yang bergerak otomatis. Penyelesaian subtask tidak otomatis mengubah status tugas induk.</p>
+    <p class="hint">No token, no payments, no rewards. Every step needs confirmation in your own wallet; no funds move automatically. Completing a subtask does not automatically change the parent task status.</p>
   </section>
 </main>
 
 <footer>
-  <p>EstafAgen — dibuat untuk Binance Agent ID Hackathon. Kode sumber terbuka.</p>
+  <p>EstafAgen — built for the Binance Agent ID Hackathon. Open source.</p>
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.17.0/dist/ethers.umd.min.js" integrity="sha384-lApM4ELRuFNT7NgNqnXB2zFWgSDdhVvmnOHov2DPJz/2zuNpZImXBeklFr18ilvi" crossorigin="anonymous"></script>

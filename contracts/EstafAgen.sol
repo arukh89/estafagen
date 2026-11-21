@@ -45,6 +45,24 @@ interface IAgentIdRegistry {
 ///      - Completing a subtask does NOT auto-update the parent task's status;
 ///        the chain is read from parentId + events.
 ///      - No task deadlines. No rewards or payments.
+///
+///      Round 5 additions (ADDITIVE only — no existing function signature or
+///      struct layout changed, so the Round 4 deployment ABI stays compatible):
+///      - ProfileExtras: availability, capacity note, guild, Agent Card URL
+///        + wallet signature, and lastUpdated (heartbeat). Stored in a
+///        separate mapping with its own getter; publishing a profile also
+///        refreshes lastUpdated, removing a profile deletes the extras.
+///      - Two-sided attestations: after a task completes, its creator
+///        attests the work quality (1-5) and its assignee attests the brief
+///        clarity (1-5). One attestation of each kind per task.
+///      - Reputation staking: accepting with a stake (1-10 points) records
+///        the stake on-chain. Points only — no funds, no token. The score
+///        itself is computed off-chain by the frontend indexer from events
+///        (see frontend/estafagen.js computeReputation()): +10 per completed
+///        delegation, +(stars-3)x2 per attestation received, +stake on a
+///        staked completion, -stake when a staked task is cancelled after
+///        acceptance. The contract has no "failed" status, so a cancel after
+///        acceptance is the observable failure signal.
 contract EstafAgen is Ownable2Step, Pausable {
     /// @notice Caller does not hold an Agent ID (`balanceOf` returned 0).
     error NotAgentIdHolder();
@@ -61,6 +79,14 @@ contract EstafAgen is Ownable2Step, Pausable {
     /// @dev Extra guard beyond the plan's error list: a zero registry would make
     ///      every holder check fail, bricking the contract.
     error InvalidRegistryAddress();
+    /// @notice An attestation of this kind already exists for this task (one each).
+    error AlreadyAttested();
+    /// @notice An attestation score is outside 1-5.
+    error InvalidScore();
+    /// @notice A reputation stake is outside 1-10.
+    error InvalidStake();
+    /// @notice An availability value is outside 0-2 (0 unspecified, 1 available, 2 busy).
+    error InvalidAvailability();
 
     /// @notice Lifecycle of a task.
     enum Status {
@@ -91,6 +117,39 @@ contract EstafAgen is Ownable2Step, Pausable {
         address assignee;
         uint256 parentId;
         Status status;
+        uint256 createdAt;
+    }
+
+    /// @notice Extra directory fields for a profile (Round 5).
+    /// @dev Kept in a separate mapping on purpose: the original Profile
+    ///      struct (and therefore the getProfile() return shape) never
+    ///      changes, so the Round 4 deployment ABI stays compatible.
+    ///      `availability`: 0 = unspecified, 1 = available, 2 = busy.
+    ///      `agentCardUrl` is the holder's own A2A Agent Card URL
+    ///      (/.well-known/agent.json), set only in their own profile edit
+    ///      flow; `agentCardSignature` is the holder's wallet signature
+    ///      over the message "EstafAgen agent-card verification\n<url>",
+    ///      which anyone can verify recovers to the holder's address.
+    ///      `lastUpdated` is the heartbeat: refreshed on publish,
+    ///      extras update, and renew; the UI calls a profile "stale"
+    ///      when it is older than 30 days.
+    struct ProfileExtras {
+        uint8 availability;
+        string capacityNote;
+        string guild;
+        string agentCardUrl;
+        string agentCardSignature;
+        uint256 lastUpdated;
+    }
+
+    /// @notice A single attestation on a completed task (Round 5).
+    /// @dev One quality attestation (by the creator, about the assignee)
+    ///      and one brief attestation (by the assignee, about the creator)
+    ///      per task. `score` is 1-5 stars.
+    struct Attestation {
+        bool exists;
+        uint8 score;
+        address attester;
         uint256 createdAt;
     }
 
@@ -140,6 +199,45 @@ contract EstafAgen is Ownable2Step, Pausable {
     /// @param creator The creator cancelling it.
     event TaskCancelled(uint256 indexed taskId, address indexed creator);
 
+    /// @notice Emitted when a holder sets or updates their profile extras.
+    /// @param holder The holder updating the extras.
+    event ProfileExtrasUpdated(address indexed holder);
+
+    /// @notice Emitted when a holder renews their profile heartbeat.
+    /// @param holder The holder renewing.
+    /// @param timestamp The new lastUpdated value (block time).
+    event ProfileRenewed(address indexed holder, uint256 timestamp);
+
+    /// @notice Emitted when a task creator attests the work quality (1-5).
+    /// @param taskId The completed task id.
+    /// @param attester The creator attesting (the delegator).
+    /// @param assignee The assignee whose work is attested.
+    /// @param score Stars, 1-5.
+    event QualityAttested(
+        uint256 indexed taskId,
+        address indexed attester,
+        address indexed assignee,
+        uint8 score
+    );
+
+    /// @notice Emitted when a task assignee attests the brief clarity (1-5).
+    /// @param taskId The completed task id.
+    /// @param attester The assignee attesting.
+    /// @param creator The creator whose brief is attested.
+    /// @param score Stars, 1-5.
+    event BriefAttested(
+        uint256 indexed taskId,
+        address indexed attester,
+        address indexed creator,
+        uint8 score
+    );
+
+    /// @notice Emitted when an assignee accepts with a reputation stake.
+    /// @param taskId The delegated task id.
+    /// @param assignee The assignee staking.
+    /// @param stake Points staked (1-10). No funds involved.
+    event ReputationStaked(uint256 indexed taskId, address indexed assignee, uint8 stake);
+
     /// @notice The Agent ID registry used for holder gating (immutable).
     IAgentIdRegistry public immutable agentIdRegistry;
 
@@ -151,6 +249,22 @@ contract EstafAgen is Ownable2Step, Pausable {
 
     /// @notice Next task id to assign. Starts at 1 so 0 stays the root sentinel.
     uint256 private _nextTaskId = 1;
+
+    /// @notice Profile extras by holder address (Round 5).
+    mapping(address => ProfileExtras) private _extras;
+
+    /// @notice Quality attestations by task id (Round 5).
+    mapping(uint256 => Attestation) private _qualityAttestations;
+
+    /// @notice Brief attestations by task id (Round 5).
+    mapping(uint256 => Attestation) private _briefAttestations;
+
+    /// @notice Reputation stake (points) recorded at accept, by task id (Round 5).
+    mapping(uint256 => uint8) private _stakes;
+
+    /// @notice Content hash (keccak256 of the plaintext) for private tasks, by task id (Round 5).
+    /// @dev Zero hash means "not a private task".
+    mapping(uint256 => bytes32) private _contentHashes;
 
     /// @notice Deploys EstafAgen gated by `agentIdRegistry_`.
     /// @dev The deployer becomes the owner (Ownable2Step). Owner powers are
@@ -219,9 +333,50 @@ contract EstafAgen is Ownable2Step, Pausable {
         return _tasks[taskId];
     }
 
+    /// @notice Returns a holder's profile extras (Round 5).
+    /// @dev All fields default to empty/zero when never set. `lastUpdated`
+    ///      is 0 for a holder who never published a profile.
+    /// @param holder The holder address.
+    /// @return The extras (availability, capacity note, guild, Agent Card
+    ///      URL + signature, lastUpdated heartbeat).
+    function getProfileExtras(address holder) external view returns (ProfileExtras memory) {
+        return _extras[holder];
+    }
+
+    /// @notice Returns the quality attestation for a task, if any (Round 5).
+    /// @param taskId The task id.
+    /// @return The attestation (exists == false when never attested).
+    function getQualityAttestation(uint256 taskId) external view returns (Attestation memory) {
+        return _qualityAttestations[taskId];
+    }
+
+    /// @notice Returns the brief attestation for a task, if any (Round 5).
+    /// @param taskId The task id.
+    /// @return The attestation (exists == false when never attested).
+    function getBriefAttestation(uint256 taskId) external view returns (Attestation memory) {
+        return _briefAttestations[taskId];
+    }
+
+    /// @notice Returns the reputation stake recorded at accept, if any (Round 5).
+    /// @param taskId The task id.
+    /// @return The staked points (0 = accepted without a stake).
+    function getStake(uint256 taskId) external view returns (uint8) {
+        return _stakes[taskId];
+    }
+
+    /// @notice Returns the content hash of a private task, if any (Round 5).
+    /// @dev Zero hash means the task is public (plaintext in `description`).
+    /// @param taskId The task id.
+    /// @return The keccak256 hash of the private plaintext, or zero.
+    function getTaskContentHash(uint256 taskId) external view returns (bytes32) {
+        return _contentHashes[taskId];
+    }
+
     /// @notice Publishes (or updates) the caller's own directory profile.
     /// @dev Holder-gated. Upsert: calling again replaces name/capabilities/
     ///      description. The `.ai` name is self-declared, not read on-chain.
+    ///      Also refreshes the heartbeat (`lastUpdated` in the extras),
+    ///      so publishing counts as renewing the profile.
     /// @param name The self-declared `.ai` name of the caller's agent.
     /// @param capabilities Free-text capabilities (what the agent can do).
     /// @param description Free-text description.
@@ -237,19 +392,74 @@ contract EstafAgen is Ownable2Step, Pausable {
             capabilities: capabilities,
             description: description
         });
+        _extras[msg.sender].lastUpdated = block.timestamp;
         emit ProfilePublished(msg.sender, name);
     }
 
     /// @notice Removes the caller's own directory profile.
     /// @dev Not holder-gated on purpose: a holder whose Agent ID was revoked
     ///      can still remove their profile. Reverts InvalidStatus when there
-    ///      is no profile to remove.
+    ///      is no profile to remove. Also deletes the profile extras
+    ///      (availability, guild, Agent Card URL + signature, heartbeat).
     function removeProfile() external whenNotPaused {
         if (!_profiles[msg.sender].exists) {
             revert InvalidStatus();
         }
         delete _profiles[msg.sender];
+        delete _extras[msg.sender];
         emit ProfileRemoved(msg.sender);
+    }
+
+    /// @notice Sets (or updates) the caller's profile extras (Round 5).
+    /// @dev Holder-gated and requires an existing profile: extras attach to
+    ///      a published profile. Upsert: calling again replaces all fields.
+    ///      Refreshes the heartbeat. The Agent Card URL is validated
+    ///      client-side (https, except http://localhost for local dev);
+    ///      the contract stores whatever string it is given, and the
+    ///      signature is what makes the badge trustworthy, not the URL.
+    /// @param availability 0 = unspecified, 1 = available, 2 = busy.
+    /// @param capacityNote Free-text note, e.g. "2 slots this week".
+    /// @param guild Free-text guild name (no on-chain membership check:
+    ///      anyone can claim any guild name; trust comes from scores).
+    /// @param agentCardUrl The holder's own A2A Agent Card URL.
+    /// @param agentCardSignature The holder's wallet signature over
+    ///      "EstafAgen agent-card verification\n<url>".
+    function setProfileExtras(
+        uint8 availability,
+        string calldata capacityNote,
+        string calldata guild,
+        string calldata agentCardUrl,
+        string calldata agentCardSignature
+    ) external whenNotPaused {
+        _requireHolder(msg.sender);
+        if (!_profiles[msg.sender].exists) {
+            revert InvalidStatus();
+        }
+        if (availability > 2) {
+            revert InvalidAvailability();
+        }
+        _extras[msg.sender] = ProfileExtras({
+            availability: availability,
+            capacityNote: capacityNote,
+            guild: guild,
+            agentCardUrl: agentCardUrl,
+            agentCardSignature: agentCardSignature,
+            lastUpdated: block.timestamp
+        });
+        emit ProfileExtrasUpdated(msg.sender);
+    }
+
+    /// @notice Renews the caller's profile heartbeat (Round 5).
+    /// @dev Holder-gated, requires an existing profile. One click, one
+    ///      transaction; the UI shows a profile as "stale" when its
+    ///      lastUpdated is older than 30 days.
+    function renewProfile() external whenNotPaused {
+        _requireHolder(msg.sender);
+        if (!_profiles[msg.sender].exists) {
+            revert InvalidStatus();
+        }
+        _extras[msg.sender].lastUpdated = block.timestamp;
+        emit ProfileRenewed(msg.sender, block.timestamp);
     }
 
     /// @notice Creates a root task. The caller is its creator and first assignee.
@@ -334,6 +544,33 @@ contract EstafAgen is Ownable2Step, Pausable {
         emit DelegationAccepted(taskId, msg.sender);
     }
 
+    /// @notice Accepts a delegation while staking reputation points (Round 5).
+    /// @dev Same checks as acceptDelegation, plus a stake of 1-10 points.
+    ///      The stake is recorded on-chain (no funds: points only) and the
+    ///      frontend indexer scores it: completing returns the stake as
+    ///      score, a cancel after acceptance burns it. Accepting without
+    ///      a stake stays possible via acceptDelegation().
+    /// @param taskId The delegated task id.
+    /// @param stake Points staked (1-10).
+    function acceptDelegationStaked(uint256 taskId, uint8 stake) external whenNotPaused {
+        if (stake < 1 || stake > 10) {
+            revert InvalidStake();
+        }
+        _requireHolder(msg.sender);
+        _requireTaskExists(taskId);
+        Task storage task = _tasks[taskId];
+        if (msg.sender != task.assignee) {
+            revert NotAssignee();
+        }
+        if (task.status != Status.Delegated) {
+            revert InvalidStatus();
+        }
+        task.status = Status.Accepted;
+        _stakes[taskId] = stake;
+        emit DelegationAccepted(taskId, msg.sender);
+        emit ReputationStaked(taskId, msg.sender, stake);
+    }
+
     /// @notice Rejects a delegation. Only the assignee, only while Delegated.
     /// @dev Not holder-gated: declining needs no Agent ID (cleanup action).
     /// @param taskId The delegated task id.
@@ -348,6 +585,52 @@ contract EstafAgen is Ownable2Step, Pausable {
         }
         task.status = Status.Rejected;
         emit DelegationRejected(taskId, msg.sender);
+    }
+
+    /// @notice Delegates a PRIVATE subtask of `parentId` to `to` (Round 5).
+    /// @dev Same checks as delegateTask. Only the content HASH is stored
+    ///      on-chain (keccak256 of the plaintext, computed client-side);
+    ///      the plaintext itself is never published — the delegator shares
+    ///      it off-chain with the assignee, who can verify it in the UI
+    ///      by pasting it (the frontend hashes and compares). The task
+    ///      description is left empty on purpose; the UI marks the task
+    ///      private when its content hash is non-zero.
+    /// @param parentId Id of the task to delegate from.
+    /// @param to Address of the holder receiving the delegation.
+    /// @param title Short title of the subtask (public).
+    /// @param contentHash keccak256 hash of the private plaintext.
+    /// @return taskId The id of the new subtask.
+    function delegateTaskPrivate(
+        uint256 parentId,
+        address to,
+        string calldata title,
+        bytes32 contentHash
+    ) external whenNotPaused returns (uint256 taskId) {
+        _requireHolder(msg.sender);
+        if (parentId == 0 || parentId >= _nextTaskId) {
+            revert NotDelegatable();
+        }
+        Task storage parent = _tasks[parentId];
+        if (msg.sender != parent.creator && msg.sender != parent.assignee) {
+            revert NotCreator();
+        }
+        if (parent.status != Status.Open && parent.status != Status.Accepted) {
+            revert NotDelegatable();
+        }
+        _requireHolder(to);
+        taskId = _nextTaskId++;
+        _tasks[taskId] = Task({
+            id: taskId,
+            title: title,
+            description: "",
+            creator: msg.sender,
+            assignee: to,
+            parentId: parentId,
+            status: Status.Delegated,
+            createdAt: block.timestamp
+        });
+        _contentHashes[taskId] = contentHash;
+        emit TaskDelegated(taskId, parentId, msg.sender, to);
     }
 
     /// @notice Marks an accepted task complete. Only the assignee, only while Accepted.
@@ -365,6 +648,66 @@ contract EstafAgen is Ownable2Step, Pausable {
         }
         task.status = Status.Completed;
         emit TaskCompleted(taskId, msg.sender);
+    }
+
+    /// @notice Attests the work quality of a completed task (Round 5).
+    /// @dev Only the task's creator (the delegator), only while Completed,
+    ///      score 1-5, once per task. The score counts toward the assignee's
+    ///      reputation: +(stars-3)x2 in the frontend indexer.
+    /// @param taskId The completed task id.
+    /// @param score Stars, 1-5.
+    function attestQuality(uint256 taskId, uint8 score) external whenNotPaused {
+        if (score < 1 || score > 5) {
+            revert InvalidScore();
+        }
+        _requireTaskExists(taskId);
+        Task storage task = _tasks[taskId];
+        if (msg.sender != task.creator) {
+            revert NotCreator();
+        }
+        if (task.status != Status.Completed) {
+            revert InvalidStatus();
+        }
+        if (_qualityAttestations[taskId].exists) {
+            revert AlreadyAttested();
+        }
+        _qualityAttestations[taskId] = Attestation({
+            exists: true,
+            score: score,
+            attester: msg.sender,
+            createdAt: block.timestamp
+        });
+        emit QualityAttested(taskId, msg.sender, task.assignee, score);
+    }
+
+    /// @notice Attests the brief clarity of a completed task (Round 5).
+    /// @dev Only the task's assignee, only while Completed, score 1-5,
+    ///      once per task. The score counts toward the creator's reputation:
+    ///      +(stars-3)x2 in the frontend indexer.
+    /// @param taskId The completed task id.
+    /// @param score Stars, 1-5.
+    function attestBrief(uint256 taskId, uint8 score) external whenNotPaused {
+        if (score < 1 || score > 5) {
+            revert InvalidScore();
+        }
+        _requireTaskExists(taskId);
+        Task storage task = _tasks[taskId];
+        if (msg.sender != task.assignee) {
+            revert NotAssignee();
+        }
+        if (task.status != Status.Completed) {
+            revert InvalidStatus();
+        }
+        if (_briefAttestations[taskId].exists) {
+            revert AlreadyAttested();
+        }
+        _briefAttestations[taskId] = Attestation({
+            exists: true,
+            score: score,
+            attester: msg.sender,
+            createdAt: block.timestamp
+        });
+        emit BriefAttested(taskId, msg.sender, task.creator, score);
     }
 
     /// @notice Cancels a task. Only the creator, any time before it is Completed.
