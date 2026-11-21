@@ -5,3 +5,4 @@ cache/
 coverage/
 typechain-types/
 frontend/local-config.json
+deployments/

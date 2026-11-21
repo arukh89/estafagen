@@ -27,11 +27,17 @@ window.ESTAFAGEN_CONFIG = {
             registry: null,
             explorerTx: null, // no explorer for a local node; show the hash
         },
-        // BSC Testnet — filled in Round 4.
+        // BSC Testnet — deployed Round 4 (22 Nov 2026) and verified exact_match
+        // on Sourcify (both contracts, creation + runtime). Sourcify also
+        // forwarded both to BscScan (Etherscan V2); the BscScan-side result
+        // could not be confirmed from this VM (no API key, BscScan web 403)
+        // — see the Round 4 report for the key needed to finish it.
+        // Mock registry 0x98b7f94587473f7290dAff8c1781f6C7aA3C2Ef0,
+        // EstafAgen 0x0d3D7d28c3f553a8328F0B7e0AFd9F9D4E84D667.
         97: {
             label: 'BSC Testnet',
-            estafagen: null,
-            registry: null, // mock registry address, filled in Round 4
+            estafagen: '0x0d3D7d28c3f553a8328F0B7e0AFd9F9D4E84D667',
+            registry: '0x98b7f94587473f7290dAff8c1781f6C7aA3C2Ef0', // mock registry, Round 4
             explorerTx: 'https://testnet.bscscan.com/tx/',
             explorerAddress: 'https://testnet.bscscan.com/address/',
         },
