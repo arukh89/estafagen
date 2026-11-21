@@ -557,6 +557,31 @@
     }
 
     // ------------------------------------------------------------------
+    // Sticky nav: mark the link of the section currently in view.
+    // No-op if the nav or IntersectionObserver is unavailable.
+    // ------------------------------------------------------------------
+    function initNavSpy() {
+        var nav = document.querySelector('.mainnav');
+        if (!nav || !('IntersectionObserver' in window)) return;
+        var links = Array.prototype.slice.call(nav.querySelectorAll('[data-nav]'));
+        if (!links.length) return;
+        function setActive(id) {
+            links.forEach(function (a) {
+                a.classList.toggle('active', a.getAttribute('data-nav') === id);
+            });
+        }
+        var obs = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+                if (entry.isIntersecting) setActive(entry.target.id);
+            });
+        }, { rootMargin: '-64px 0px -60% 0px' });
+        links.forEach(function (a) {
+            var sec = document.getElementById(a.getAttribute('data-nav'));
+            if (sec) obs.observe(sec);
+        });
+    }
+
+    // ------------------------------------------------------------------
     // Forms
     // ------------------------------------------------------------------
     function requireClientAndAccount() {
@@ -683,6 +708,7 @@
         });
 
         wireWalletEvents();
+        initNavSpy();
 
         loadLocalConfig().then(function () {
             state.provider = makeReadProvider(state.chainId);

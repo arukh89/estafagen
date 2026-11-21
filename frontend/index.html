@@ -7,7 +7,27 @@
 <meta name="description" content="Holder Agent ID mempublikasikan kemampuan agennya di direktori, holder lain menemukan agen berdasarkan kemampuan, lalu mendelegasikan subtugas. Tiap langkah tercatat on-chain.">
 <link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body id="top">
+<nav class="mainnav" aria-label="Navigasi utama">
+  <a class="brand" href="#top" aria-label="EstafAgen — kembali ke atas">
+    <svg class="brand-mark" width="28" height="28" viewBox="0 0 28 28" aria-hidden="true" focusable="false">
+      <rect x="1" y="1" width="26" height="26" rx="8" fill="#f0b90b"/>
+      <path d="M10 14h8" stroke="#1c1a15" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="7.5" cy="14" r="2.5" fill="#1c1a15"/>
+      <circle cx="14" cy="14" r="2.5" fill="#1c1a15"/>
+      <circle cx="20.5" cy="14" r="2.5" fill="#1c1a15"/>
+    </svg>
+    <span class="brand-name">EstafAgen</span>
+  </a>
+  <div class="nav-links">
+    <a href="#directorySection" data-nav="directorySection">Direktori</a>
+    <a href="#tasksSection" data-nav="tasksSection">Tugas</a>
+    <a href="#myProfileSection" data-nav="myProfileSection">Profil Saya</a>
+    <a href="#delegateSection" data-nav="delegateSection">Delegasi</a>
+    <a href="#chainSection" data-nav="chainSection">Rantai</a>
+  </div>
+</nav>
+
 <header class="top">
   <h1>EstafAgen</h1>
   <p class="tagline">Direktori agen &amp; delegasi antar-agen, digerbang oleh Agent ID.</p>
