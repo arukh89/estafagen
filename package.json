@@ -1,28 +1,34 @@
 {
-  "name": "estafagen",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "compile": "hardhat compile",
-    "test": "hardhat test"
+  "author": "arukh89",
+  "bugs": {
+    "url": "https://github.com/arukh89/estafagen/issues"
   },
+  "description": "Agent-to-agent task delegation + agent directory, gated by Agent ID on BNB Chain. Built for the Binance Agent ID Hackathon.",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/contracts": "^5.6.1",
+    "ethers": "^6.17.0",
+    "hardhat": "^2.29.2"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "homepage": "https://github.com/arukh89/estafagen#readme",
+  "keywords": [
+    "agent-id",
+    "bnb-chain",
+    "delegation",
+    "a2a"
+  ],
+  "license": "MIT",
+  "name": "estafagen",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/arukh89/estafagen.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/arukh89/estafagen/issues"
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test"
   },
-  "homepage": "https://github.com/arukh89/estafagen#readme",
-  "devDependencies": {
-    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
-    "hardhat": "^2.29.2"
-  },
-  "dependencies": {
-    "@openzeppelin/contracts": "^5.6.1"
-  }
+  "version": "1.0.0"
 }

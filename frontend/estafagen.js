@@ -153,23 +153,32 @@
         ERROR_SELECTORS[ethers.id(name + '()').slice(0, 10).toLowerCase()] = name;
     });
 
+    // Flatten every field an ethers v6 error may carry a decoded revert
+    // name (or any other useful text) in. Single source of truth for
+    // error-text assembly (F20): revertName(), explainError() and the
+    // integration test all use this instead of their own copies.
+    function flattenErrorText(err) {
+        var parts = [];
+        try {
+            if (err) {
+                if (err.reason) parts.push(String(err.reason));
+                if (err.message) parts.push(String(err.message));
+                if (err.code) parts.push(String(err.code));
+                if (err.errorName) parts.push(String(err.errorName));
+                if (err.data) parts.push(String(err.data));
+                if (err.error) {
+                    if (err.error.message) parts.push(String(err.error.message));
+                    if (err.error.data) parts.push(String(err.error.data));
+                }
+            }
+        } catch (e) { /* ignore */ }
+        return parts.join(' ');
+    }
+
     // Returns the contract custom-error name for a revert, or null.
     function revertName(err) {
         if (err && err.errorName) return err.errorName;
-        var text = '';
-        try {
-            if (err) {
-                if (err.reason) text += ' ' + String(err.reason);
-                if (err.message) text += ' ' + String(err.message);
-                if (err.data) text += ' ' + String(err.data);
-                if (err.error) {
-                    if (err.error.data) text += ' ' + String(err.error.data);
-                    if (err.error.message) text += ' ' + String(err.error.message);
-                }
-            }
-        } catch (e) {
-            text = '';
-        }
+        var text = flattenErrorText(err);
         var i, j;
         for (i = 0; i < CUSTOM_ERRORS.length; i++) {
             if (text.indexOf(CUSTOM_ERRORS[i]) !== -1) return CUSTOM_ERRORS[i];
@@ -184,15 +193,8 @@
         return null;
     }
 
-    function explainError(err, context) {
-        var text = '';
-        try {
-            text = String((err && (err.reason || err.message || err.code)) || err || '');
-            if (err && err.data) text += ' ' + String(err.data);
-            if (err && err.error && err.error.message) text += ' ' + String(err.error.message);
-        } catch (e) {
-            text = '';
-        }
+    function explainError(err, context, faucetUrl) {
+        var text = flattenErrorText(err);
 
         // 1. User rejected the signature in their wallet.
         if (
@@ -229,7 +231,10 @@
 
         // 3. Out of gas money (testnet tBNB / mainnet BNB).
         if (/insufficient funds|INSUFFICIENT_FUNDS/i.test(text)) {
-            return 'Saldo tidak cukup untuk biaya gas. Klaim tBNB gratis dari faucet resmi, lalu coba lagi.';
+            var faucet = faucetUrl
+                ? ' Klaim tBNB gratis dari faucet resmi (' + faucetUrl + '), lalu coba lagi.'
+                : ' Klaim tBNB gratis dari faucet resmi, lalu coba lagi.';
+            return 'Saldo tidak cukup untuk biaya gas.' + faucet;
         }
 
         // 4. Network / provider problems.
@@ -290,40 +295,61 @@
             return Number(await readContract.taskCount());
         }
 
-        async function listTasks() {
+        async function listTasks(limit) {
             var count = await getTaskCount();
-            var tasks = [];
-            for (var i = 1; i <= count; i++) {
-                tasks.push(await getTask(i));
-            }
-            // Newest first.
+            // Newest first, at most `limit` (default 100) — the old code
+            // awaited one RPC call per task in sequence (F16).
+            var max = (typeof limit === 'number' && limit > 0) ? limit : 100;
+            var ids = [];
+            for (var i = count; i >= Math.max(1, count - max + 1); i--) ids.push(i);
+            var tasks = await Promise.all(ids.map(function (id) { return getTask(id); }));
             tasks.sort(function (a, b) { return b.id - a.id; });
             return tasks;
         }
 
         // Directory discovery: ONLY from self-published ProfilePublished
         // events. Holders who never published are invisible by design.
+        //
+        // The scan starts at `deployedFromBlock` (from config.js), NOT
+        // block 0 (F5): on BSC Testnet block 0 means ~144M blocks and
+        // public RPCs time out on a range that wide. Results are cached
+        // in memory per client (one client per chain): a refresh only
+        // scans events since the last scanned block and re-reads the
+        // profiles of holders with a new event. The boundary block is
+        // re-scanned on purpose, so an event landing in the same block
+        // after our query is not missed; re-reads are idempotent.
+        var deployedFromBlock = (addresses && typeof addresses.deployedFromBlock === 'number')
+            ? addresses.deployedFromBlock
+            : 0;
+        var profileCache = {};         // holder address -> profile
+        var profileCacheToBlock = null; // last block fully scanned, or null
         async function listProfiles() {
-            var events = await readContract.queryFilter(
+            var from = (profileCacheToBlock === null) ? deployedFromBlock : profileCacheToBlock;
+            var published = await readContract.queryFilter(
                 readContract.filters.ProfilePublished(),
-                0,
+                from,
                 'latest'
             );
-            var seen = {};
-            var holders = [];
-            events.forEach(function (ev) {
-                var h = ev.args.holder;
-                if (!seen[h]) {
-                    seen[h] = true;
-                    holders.push(h);
-                }
+            var removed = await readContract.queryFilter(
+                readContract.filters.ProfileRemoved(),
+                from,
+                'latest'
+            );
+            var maxBlock = null;
+            published.concat(removed).forEach(function (ev) {
+                if (maxBlock === null || ev.blockNumber > maxBlock) maxBlock = ev.blockNumber;
             });
-            var profiles = [];
-            for (var i = 0; i < holders.length; i++) {
-                var p = await getProfile(holders[i]);
-                if (p.exists) profiles.push(p);
-            }
-            return profiles;
+            var holders = {};
+            published.forEach(function (ev) { holders[ev.args.holder] = true; });
+            removed.forEach(function (ev) { holders[ev.args.holder] = true; });
+            var keys = Object.keys(holders);
+            var fresh = await Promise.all(keys.map(function (h) { return getProfile(h); }));
+            fresh.forEach(function (p) {
+                if (p.exists) profileCache[p.holder] = p;
+                else delete profileCache[p.holder];
+            });
+            if (maxBlock !== null) profileCacheToBlock = maxBlock;
+            return Object.keys(profileCache).map(function (h) { return profileCache[h]; });
         }
 
         // Case-insensitive substring match over name + capabilities +
@@ -434,6 +460,7 @@
         isAddress: isAddress,
         explainError: explainError,
         revertName: revertName,
+        flattenErrorText: flattenErrorText,
         createClient: createClient,
     };
 });

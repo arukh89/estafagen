@@ -48,23 +48,6 @@ async function step(name, fn) {
     }
 }
 
-function errorText(err) {
-    // Flatten every field ethers v6 may carry a decoded revert name in.
-    let parts = [];
-    try {
-        if (err) {
-            if (err.reason) parts.push(String(err.reason));
-            if (err.message) parts.push(String(err.message));
-            if (err.code) parts.push(String(err.code));
-            if (err.errorName) parts.push(String(err.errorName));
-            if (err.data) parts.push(String(err.data));
-            if (err.error && err.error.message) parts.push(String(err.error.message));
-            if (err.error && err.error.data) parts.push(String(err.error.data));
-        }
-    } catch (e) { /* ignore */ }
-    return parts.join(' ');
-}
-
 async function assertReverts(promise, expectedName, label) {
     try {
         await promise;
@@ -73,7 +56,7 @@ async function assertReverts(promise, expectedName, label) {
         assert.strictEqual(
             name,
             expectedName,
-            `${label}: expected revert ${expectedName}, got ${name || 'unknown'} (${errorText(err).slice(0, 200)})`
+            `${label}: expected revert ${expectedName}, got ${name || 'unknown'} (${EstafAgen.flattenErrorText(err).slice(0, 200)})`
         );
         return err;
     }

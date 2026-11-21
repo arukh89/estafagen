@@ -37,6 +37,8 @@
     <button id="connectBtn" class="btn primary" type="button">Hubungkan wallet</button>
   </div>
   <p id="accountLine" class="account-line" hidden></p>
+  <p id="connectMsg" class="form-msg" hidden></p>
+  <p id="ethersLoadMsg" class="notice warn" hidden></p>
   <p id="noWalletMsg" class="notice" hidden>Tidak ada wallet terdeteksi di browser ini. Buka halaman ini dari browser yang punya wallet (mis. MetaMask) atau dari in-app browser Binance Wallet.</p>
   <p id="wrongNetworkMsg" class="notice warn" hidden></p>
   <p id="pausedMsg" class="notice warn" hidden>Kontrak sedang dijeda oleh pemilik. Pembacaan tetap bisa, tapi perubahan tidak bisa dilakukan sampai dibuka lagi.</p>
@@ -164,7 +166,19 @@
   <p>EstafAgen — dibuat untuk Binance Agent ID Hackathon. Kode sumber terbuka.</p>
 </footer>
 
-<script src="https://cdn.jsdelivr.net/npm/ethers@6.17.0/dist/ethers.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.17.0/dist/ethers.umd.min.js" integrity="sha384-lApM4ELRuFNT7NgNqnXB2zFWgSDdhVvmnOHov2DPJz/2zuNpZImXBeklFr18ilvi" crossorigin="anonymous"></script>
+<script>
+  // Fallback (F15): if the primary CDN failed — network error or SRI
+  // mismatch — load the same pinned build from unpkg, same SRI hash
+  // (both CDNs serve byte-identical files, verified 22 Nov 2026).
+  // document.write keeps the fallback parser-blocking, so estafagen.js
+  // (loaded below) always sees window.ethers when either CDN worked.
+  // If both CDNs fail, app.js init() shows a clear message instead of
+  // a silently dead page (see the ethersLoadMsg guard there).
+  if (typeof window.ethers === 'undefined') {
+    document.write('<script src="https:\/\/unpkg.com\/ethers@6.17.0\/dist\/ethers.umd.min.js" integrity="sha384-lApM4ELRuFNT7NgNqnXB2zFWgSDdhVvmnOHov2DPJz\/2zuNpZImXBeklFr18ilvi" crossorigin="anonymous"><\/script>');
+  }
+</script>
 <script src="config.js"></script>
 <script src="estafagen.js"></script>
 <script src="app.js"></script>

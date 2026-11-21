@@ -1,7 +1,9 @@
-# EstafAgen — Frontend (Ronde 3)
+# EstafAgen — Frontend (Ronde 3–4.6)
 
 Halaman statis, tanpa framework/build step. `ethers` v6 dimuat dari CDN
-(pinned 6.17.0, sama dengan versi di `node_modules`).
+(pinned 6.17.0, sama dengan versi di `node_modules`) dengan SRI + fallback
+ke CDN kedua; bila keduanya gagal, halaman menampilkan pesan jelas
+(bukan mati diam-diam).
 
 ## File
 
@@ -20,11 +22,15 @@ frontend/
 
 - **Konektor:** hanya `window.ethereum` (injected). Tanpa QR, tanpa
   WalletConnect. Tanpa wallet pun direktori + tugas tetap bisa dibaca
-  (mode tamu) lewat public RPC chain yang dipilih.
+  (mode tamu) lewat public RPC chain yang dipilih — pembacaan selalu
+  lewat public RPC, wallet hanya dipakai untuk signing.
 - **Direktori:** ditemukan HANYA dari event `ProfilePublished` — entri
-  yang diterbitkan sendiri oleh holder (opt-in). Tidak ada lookup
-  nama→alamat untuk holder yang tidak mempublikasikan diri. Nama `.ai`
-  di profil adalah deklarasi sendiri; alamat selalu ditampilkan.
+  yang diterbitkan sendiri oleh holder (opt-in). Pemindaian dimulai
+  dari `deployedFromBlock` di `config.js` (bukan blok 0) dan hasilnya
+  di-cache di memori per chain. Pencarian di-debounce ±300 ms.
+  Tidak ada lookup nama→alamat untuk holder yang tidak
+  mempublikasikan diri. Nama `.ai` di profil adalah deklarasi sendiri;
+  alamat selalu ditampilkan.
 - **Tugas akar tidak bisa diselesaikan:** tugas akar berstatus Open dan
   kontrak tidak punya jalur ke Completed untuknya (temuan Ronde 2).
   UI tidak menampilkan tombol "Selesai" pada tugas akar; yang
@@ -53,7 +59,13 @@ node scripts/integration-test.js
 #    diberi status holder oleh deploy-local.js.
 ```
 
-## Ronde 4 (testnet) akan mengisi
+## Ronde 4 (testnet) — selesai 22 Nov 2026
 
-- `config.js`: alamat EstafAgen + mock registry di chain 97.
-- Deploy script dengan assert chainId (97 → mock, 56 → resmi).
+- `config.js`: chain 97 terisi — EstafAgen
+  `0x0d3D7d28c3f553a8328F0B7e0AFd9F9D4E84D667`, mock registry
+  `0x98b7f94587473f7290dAff8c1781f6C7aA3C2Ef0`, `deployedFromBlock`
+  144092369 (blok deploy mock; EstafAgen di 144092375).
+- Kedua kontrak Sourcify `exact_match`. Verifikasi native BscScan
+  masih butuh API key Etherscan gratis (lihat README root).
+- Deploy script dengan assert chainId (97 → mock, 56 → resmi):
+  `scripts/deploy-testnet.js`.

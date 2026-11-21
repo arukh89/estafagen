@@ -17,8 +17,10 @@
     var EA = window.EstafAgen;
 
     // Public read-only RPCs for guest mode (no wallet needed to read).
+    // Hostname matches hardhat.config.js (bnbchain.org) — one source of
+    // truth for the testnet RPC (F17).
     var PUBLIC_RPC = {
-        97: 'https://data-seed-prebsc-1-s1.binance.org:8545/',
+        97: 'https://data-seed-prebsc-1-s1.bnbchain.org:8545',
         56: 'https://bsc-dataseed.binance.org/',
         31337: 'http://127.0.0.1:8545/',
     };
@@ -76,6 +78,12 @@
     var txLink = $('txLink');
     var txStage4Text = $('txStage4Text');
 
+    // Highest tx stage actually reached (1 = preparing, 2 = waiting for
+    // wallet confirmation, 3 = waiting for network, 4 = mined). txFail()
+    // only marks stages up to this one — stages never reached stay
+    // neutral instead of showing a misleading checkmark (F13).
+    var txReached = 0;
+
     function setStage(n, status) {
         // status: 'active' | 'done' | 'failed' | '' (reset)
         var items = txBox.querySelectorAll('.stages li');
@@ -84,11 +92,11 @@
             li.classList.remove('active', 'done', 'failed');
             if (status && s === n) li.classList.add(status);
             if (status === 'done' && s < n) li.classList.add('done');
-            if (status === 'failed' && s < n) li.classList.add('done');
         });
     }
 
     function txStart(label) {
+        txReached = 1;
         txBox.hidden = false;
         txLinkWrap.hidden = true;
         txMsg.textContent = label || '';
@@ -98,6 +106,7 @@
     }
 
     function txOnStage(stage, arg) {
+        txReached = stage;
         if (stage === 2) {
             setStage(1, 'done'); setStage(2, 'active');
             txMsg.textContent = 'Silakan konfirmasi di wallet-mu. Tidak ada dana yang bergerak sampai kamu menyetujuinya.';
@@ -132,9 +141,17 @@
     }
 
     function txFail(err, context) {
-        setStage(4, 'failed');
+        // Only stages actually reached get a mark: earlier ones 'done',
+        // the stage where it failed 'failed', later ones stay neutral.
+        var items = txBox.querySelectorAll('.stages li');
+        items.forEach(function (li) {
+            var s = Number(li.getAttribute('data-stage'));
+            li.classList.remove('active', 'done', 'failed');
+            if (s < txReached) li.classList.add('done');
+            else if (s === txReached) li.classList.add('failed');
+        });
         txStage4Text.textContent = 'Gagal';
-        txMsg.textContent = EA.explainError(err, context || 'tx');
+        txMsg.textContent = explain(err, context || 'tx');
         txMsg.className = 'tx-msg error';
         try { console.error('[EstafAgen] tx failed', err); } catch (e) { /* ignore */ }
     }
@@ -158,6 +175,13 @@
         node.className = 'form-msg' + (ok ? ' ok' : msg ? ' error' : '');
     }
 
+    // Single place that turns an error into an Indonesian message (F21):
+    // passes the faucet URL from config so the "saldo tidak cukup"
+    // message can point at it instead of naming it nowhere.
+    function explain(err, context) {
+        return EA.explainError(err, context, CONFIG.faucetUrl);
+    }
+
     // ------------------------------------------------------------------
     // Providers / chain handling
     // ------------------------------------------------------------------
@@ -176,10 +200,13 @@
         }
     }
 
+    // Reads ALWAYS go through the public RPC for the selected chain (F7).
+    // The wallet provider is only used for signing writes, never for
+    // reads — so guest mode works exactly the same with or without a
+    // wallet installed, and the dropdown choice is never overwritten by
+    // the wallet's chain (the old code returned a BrowserProvider here
+    // whenever window.ethereum existed).
     function makeReadProvider(chainId) {
-        if (window.ethereum) {
-            return new ethers.BrowserProvider(window.ethereum);
-        }
         var url = PUBLIC_RPC[chainId];
         if (!url) return null;
         return new ethers.JsonRpcProvider(url);
@@ -194,6 +221,7 @@
         state.client = EA.createClient(state.provider, {
             estafagen: cfg.estafagen,
             registry: cfg.registry,
+            deployedFromBlock: cfg.deployedFromBlock, // F5: directory scan start
         });
         return true;
     }
@@ -249,7 +277,13 @@
     // ------------------------------------------------------------------
     // Directory
     // ------------------------------------------------------------------
+    // Generation counter (F6): every refresh bumps it; a response that
+    // arrives after a newer refresh started is discarded, so a slow
+    // reply to an old query can never overwrite newer results.
+    var dirGeneration = 0;
+
     async function refreshDirectory() {
+        var gen = ++dirGeneration;
         var list = $('profileList');
         var status = $('dirStatus');
         list.innerHTML = '';
@@ -260,7 +294,9 @@
         status.textContent = 'Memuat direktori…';
         try {
             var q = $('searchInput').value;
-            state.profiles = await state.client.searchProfiles(q);
+            var profiles = await state.client.searchProfiles(q);
+            if (gen !== dirGeneration) return; // superseded by a newer refresh
+            state.profiles = profiles;
             status.textContent = state.profiles.length === 0
                 ? 'Belum ada profil di direktori ini.'
                 : state.profiles.length + ' agen di direktori.';
@@ -295,7 +331,8 @@
                 list.appendChild(li);
             });
         } catch (err) {
-            status.textContent = EA.explainError(err, 'call');
+            if (gen !== dirGeneration) return; // superseded; don't show stale error
+            status.textContent = explain(err, 'call');
             try { console.error('[EstafAgen] directory load failed', err); } catch (e) { /* ignore */ }
         }
     }
@@ -307,18 +344,22 @@
         var hint = $('myProfileHint');
         if (!state.account || !state.client) {
             $('myProfileCurrent').hidden = true;
+            state.myProfile = null;
+            await refreshAccountUI();
             return;
         }
         try {
             state.holder = await state.client.isHolder(state.account);
             state.myProfile = await state.client.getProfile(state.account);
         } catch (err) {
-            hint.textContent = EA.explainError(err, 'call');
+            hint.textContent = explain(err, 'call');
             return;
         }
         if (!state.holder) {
             hint.textContent = 'Alamat ini belum memegang Agent ID, jadi belum bisa menerbitkan profil. Klaim Agent ID dulu di aplikasi Binance (Wallet > banner Agent ID).';
             $('myProfileCurrent').hidden = true;
+            state.myProfile = null;
+            await refreshAccountUI(); // F10: don't leave the previous account's holder info showing
             return;
         }
         hint.textContent = 'Profil diterbitkan atas namamu sendiri. Siapa pun bisa melihatnya di direktori; kamu bisa mengubah atau menghapusnya kapan saja.';
@@ -415,10 +456,15 @@
         }
         status.textContent = 'Memuat tugas…';
         try {
-            state.tasks = await state.client.listTasks();
-            status.textContent = state.tasks.length === 0
+            // Total count first, so the status line can say when the
+            // display is capped (F16: listTasks shows at most 100 newest).
+            var total = await state.client.getTaskCount();
+            state.tasks = await state.client.listTasks(100);
+            status.textContent = total === 0
                 ? 'Belum ada tugas.'
-                : state.tasks.length + ' tugas.';
+                : state.tasks.length < total
+                    ? 'Menampilkan ' + state.tasks.length + ' tugas terbaru dari ' + total + ' tugas.'
+                    : state.tasks.length + ' tugas.';
             state.tasks.forEach(function (t) {
                 var li = el('li');
                 var h = el('h3', null, '#' + t.id + ' · ' + t.title);
@@ -443,7 +489,7 @@
                 list.appendChild(li);
             });
         } catch (err) {
-            status.textContent = EA.explainError(err, 'call');
+            status.textContent = explain(err, 'call');
             try { console.error('[EstafAgen] tasks load failed', err); } catch (e) { /* ignore */ }
         }
     }
@@ -462,41 +508,41 @@
             });
             if (chain.length === 0) list.appendChild(el('li', null, 'Tugas tidak ditemukan.'));
         } catch (err) {
-            list.appendChild(el('li', null, EA.explainError(err, 'call')));
+            list.appendChild(el('li', null, explain(err, 'call')));
         }
         $('chainSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     async function refreshAll() {
-        updateNetworkUI();
         if (!hasContract(state.chainId)) {
             $('dirStatus').textContent = 'Direktori tidak tersedia di jaringan ini.';
             $('tasksStatus').textContent = 'Tugas tidak tersedia di jaringan ini.';
+            // F9: don't leave the previous chain's lists on screen.
+            $('profileList').innerHTML = '';
+            $('taskList').innerHTML = '';
+            state.profiles = [];
+            state.tasks = [];
+            updateNetworkUI();
             return;
         }
         try { state.paused = await state.client.isPaused(); } catch (e) { state.paused = false; }
-        updateNetworkUI();
-        await refreshDirectory();
-        await refreshTasks();
-        await refreshMyProfile();
+        updateNetworkUI(); // called once, after the pause state is known (F18)
+        // The three refreshes are independent reads — run them in
+        // parallel instead of one after another (F16).
+        await Promise.all([refreshDirectory(), refreshTasks(), refreshMyProfile()]);
     }
 
-    async function setChain(chainId, opts) {
+    // Reads always use the public-RPC provider for the selected chain
+    // (F7). The wallet is never consulted here, so the dropdown choice
+    // is the chain that gets read — even with a wallet installed on a
+    // different chain. (The dead `opts.keepAccount` branch is gone, F22.)
+    async function setChain(chainId) {
         state.chainId = Number(chainId);
         state.provider = makeReadProvider(state.chainId);
         if (!state.provider) {
             $('wrongNetworkMsg').hidden = false;
             $('wrongNetworkMsg').textContent = 'Tidak ada penyedia untuk jaringan ini.';
             return;
-        }
-        if (state.walletProvider && !(opts && opts.keepAccount)) {
-            // Keep the connected account; reads go through the wallet provider
-            // so the chain shown always matches the wallet's chain.
-            try {
-                state.provider = state.walletProvider;
-                var net = await state.walletProvider.getNetwork();
-                state.chainId = Number(net.chainId);
-            } catch (e) { /* fall back to the read provider */ }
         }
         buildClient();
         await refreshAll();
@@ -519,36 +565,59 @@
             state.account = accounts[0];
             var net = await state.walletProvider.getNetwork();
             state.chainId = Number(net.chainId);
-            state.provider = state.walletProvider;
+            // Reads stay on the public RPC for the wallet's chain (F7);
+            // the wallet provider is only kept for signing.
+            state.provider = makeReadProvider(state.chainId);
             buildClient();
             $('connectBtn').textContent = EA.shortAddress(state.account);
+            $('connectMsg').hidden = true;
+            formMsg($('connectMsg'), '');
             await refreshAll();
         } catch (err) {
-            formMsg($('profileMsg'), EA.explainError(err, 'tx'));
+            // F14: a connect failure belongs next to the connect button,
+            // not down in the profile form.
+            var cm = $('connectMsg');
+            cm.hidden = false;
+            formMsg(cm, explain(err, 'tx'));
             try { console.error('[EstafAgen] connect failed', err); } catch (e) { /* ignore */ }
         }
     }
 
     function wireWalletEvents() {
         if (!window.ethereum || !window.ethereum.on) return;
-        window.ethereum.on('accountsChanged', function (accounts) {
+        window.ethereum.on('accountsChanged', async function (accounts) {
             if (!accounts || accounts.length === 0) {
                 state.account = null;
                 state.signer = null;
                 $('connectBtn').textContent = 'Hubungkan wallet';
                 refreshAll();
             } else {
+                // F12: the new address comes with the event — use it
+                // directly instead of asking eth_requestAccounts again
+                // (which could pop another wallet prompt).
+                if (!state.walletProvider) {
+                    state.walletProvider = new ethers.BrowserProvider(window.ethereum);
+                }
                 state.account = accounts[0];
-                connect();
+                try {
+                    state.signer = await state.walletProvider.getSigner();
+                } catch (e) { state.signer = null; }
+                $('connectBtn').textContent = EA.shortAddress(state.account);
+                await refreshAll();
             }
         });
         window.ethereum.on('chainChanged', function () {
-            // The wallet changed chain: re-read from the wallet provider.
+            // The wallet changed chain: fresh provider + fresh signer
+            // (F11 — the old code kept a signer bound to the old
+            // provider), reads back on the public RPC (F7).
             if (state.walletProvider) {
                 state.walletProvider = new ethers.BrowserProvider(window.ethereum);
-                state.provider = state.walletProvider;
-                state.walletProvider.getNetwork().then(function (net) {
+                state.walletProvider.getNetwork().then(async function (net) {
                     state.chainId = Number(net.chainId);
+                    try {
+                        state.signer = await state.walletProvider.getSigner();
+                    } catch (e) { state.signer = null; }
+                    state.provider = makeReadProvider(state.chainId);
                     buildClient();
                     refreshAll();
                 });
@@ -591,7 +660,37 @@
         return null;
     }
 
+    // Ask the wallet to add a chain it doesn't know yet (F8), using
+    // the chain parameters from config.js / PUBLIC_RPC.
+    var NATIVE_CURRENCY = {
+        97: { name: 'BNB', symbol: 'BNB', decimals: 18 },
+        56: { name: 'BNB', symbol: 'BNB', decimals: 18 },
+        31337: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+    };
+    async function addChainToWallet(chainId) {
+        var cfg = chainConfig(chainId);
+        var params = {
+            chainId: '0x' + Number(chainId).toString(16),
+            chainName: cfg ? cfg.label : ('Chain ' + chainId),
+            nativeCurrency: NATIVE_CURRENCY[chainId] || { name: 'Ether', symbol: 'ETH', decimals: 18 },
+            rpcUrls: [PUBLIC_RPC[chainId]],
+        };
+        if (cfg && cfg.explorer) params.blockExplorerUrls = [cfg.explorer];
+        return await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [params],
+        });
+    }
+
     function init() {
+        // F15: if ethers never loaded (both CDNs unreachable), don't
+        // leave a silently dead page — say so plainly and stop here.
+        if (typeof window.ethers === 'undefined' || !window.EstafAgen) {
+            var loadMsg = $('ethersLoadMsg');
+            loadMsg.hidden = false;
+            loadMsg.textContent = 'Gagal memuat pustaka ethers dari CDN (jsDelivr dan unpkg). Periksa koneksi internetmu, lalu muat ulang halaman ini.';
+            return;
+        }
         // Chain selector.
         var select = $('chainSelect');
         Object.keys(CONFIG.chains).forEach(function (id) {
@@ -611,7 +710,24 @@
                     });
                     return; // chainChanged event re-inits
                 } catch (err) {
-                    formMsg($('profileMsg'), EA.explainError(err, 'tx'));
+                    // F8: chain not added in this wallet (error 4902 —
+                    // common for BSC Testnet in a fresh wallet / in the
+                    // Binance in-app browser): add it, then retry.
+                    if (err && (err.code === 4902 || /4902/.test(String(err.message || '')))) {
+                        try {
+                            await addChainToWallet(id);
+                            await window.ethereum.request({
+                                method: 'wallet_switchEthereumChain',
+                                params: [{ chainId: '0x' + id.toString(16) }],
+                            });
+                            return; // chainChanged event re-inits
+                        } catch (addErr) {
+                            formMsg($('profileMsg'), explain(addErr, 'tx'));
+                            select.value = String(state.chainId);
+                            return;
+                        }
+                    }
+                    formMsg($('profileMsg'), explain(err, 'tx'));
                     select.value = String(state.chainId);
                     return;
                 }
@@ -622,10 +738,13 @@
         $('connectBtn').addEventListener('click', connect);
         $('refreshDirBtn').addEventListener('click', refreshDirectory);
         $('refreshTasksBtn').addEventListener('click', refreshTasks);
+        // Debounced search (F6): wait ~300 ms after the last keystroke
+        // before re-querying; the generation counter in
+        // refreshDirectory() drops any reply that is already stale.
+        var searchTimer = null;
         $('searchInput').addEventListener('input', function () {
-            // Debounce lightly: re-query on each keystroke is fine for v1
-            // (event scan is local to the node / small on testnet).
-            refreshDirectory();
+            if (searchTimer) clearTimeout(searchTimer);
+            searchTimer = setTimeout(refreshDirectory, 300);
         });
         $('showChainBtn').addEventListener('click', function () {
             var id = Number($('chainTaskId').value);
